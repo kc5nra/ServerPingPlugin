@@ -13,12 +13,20 @@ public:
     ServerPingSettings();
     virtual ~ServerPingSettings();
 
+
+public:
+	void UpdateSelectedItemValues(int pingerIndex);
+
 private:
 	bool InitServerListColumns(HWND hwndServerList);
 	bool InitServerListData(HWND hwndServerList);
 
+	void HandleClear();
 	void HandleLVNGetDispInfo(NMLVDISPINFO *plvdi);
-	LRESULT ServerPingSettings::HandleCustomDraw(LPARAM lParam);
+	void HandleLVNItemChanged(LPNMLISTVIEW pnmv);
+	LRESULT HandleCustomDraw(LPARAM lParam);
+
+
 	COLORREF GetColor(int pingerIndex, int listViewColumn);
 
     void InitDialog();
@@ -32,9 +40,10 @@ private:
 	String  stringPool[3];
 	LPTSTR  lptstrPool[3];
 
-	int     nextFreePoolItem;
+	int nextFreePoolItem;
 
 public:
+	CRITICAL_SECTION pingerMutex;
 	volatile bool isUpdateThreadFinished;
 
 public:

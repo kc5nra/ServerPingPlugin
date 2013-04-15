@@ -80,7 +80,7 @@ double Pinger::StandardDeviation()
 
 double Pinger::Average() 
 {
-	return ((double)pingSum / (double)pings->Num());
+	return ceil((((double)pingSum / (double)pings->Num()) * pow((double)10, 2)) - 0.49) / pow((double)10, 2);
 }
 
 void Pinger::Clear()
@@ -88,6 +88,7 @@ void Pinger::Clear()
 	pings->Clear();
 	minimumPing = -1;
 	maximumPing = -1;
+	latestPing = -1;
 	pingSum = 0;
 }
 
@@ -97,13 +98,11 @@ Pinger::Pinger(XElement *serviceElement, XDataItem *serverDataItem)
 	pings = new List<UINT>();
 	service = NULL;
 
-	minimumPing = -1;
-	maximumPing = -1;
-	pingSum = 0;
-
 	serviceName = serviceElement->GetName();
 	serverName = serverDataItem->GetName();
 	serverUrl = serverDataItem->GetData();
+
+	Clear();
 }
 
 Pinger::~Pinger()

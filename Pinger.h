@@ -43,13 +43,12 @@ private:
 	int maximumPing;
 
 public:
+	const String& GetServiceName() { return serviceName; }
+	const String& GetServerName() { return serverName; }
+	const String& GetServerUrl() { return serverUrl; }
+
 	int GetLatestPing() { return latestPing; }
 	int GetMinimumPing() { return minimumPing; }
 	int GetMaximumPing() { return maximumPing; }
-
-public:
-	const String& GetServiceName() { return serviceName; }
-	const String& GetServerName() { return serverName; }
-
 
 };

@@ -14,16 +14,37 @@
 #define COLOR_RED RGB(255, 0, 0)
 #define COLOR_BLACK RGB(0, 0, 0)
 
-void pingThread(void *param)
+volatile int currentRowBeingPinged = -1;
+
+void pingThread(void *arg)
 {
+
 	ServerPingSettings *settings = ServerPingPlugin::instance->GetSettings();
 	List<Pinger *> *pingers = settings->GetPingers();
 	HWND hwndServerList = GetDlgItem(settings->GetHwnd(), IDC_SERVERLIST);
 
+	int previousRow = -1;
 	while(!settings->isUpdateThreadFinished) {
+		
 		for(UINT i = 0; i < pingers->Num(); i++) {
-			pingers->GetElement(i)->Ping();
+			currentRowBeingPinged = i;
+			// update the previous row to turn off the background
+			SendMessage(hwndServerList, LVM_UPDATE, previousRow, 0);
+			// update the new row signifying that it is currently being pinged
 			SendMessage(hwndServerList, LVM_UPDATE, i, 0);
+
+			LeaveCriticalSection(&settings->pingerMutex);
+			pingers->GetElement(i)->Ping();
+			LeaveCriticalSection(&settings->pingerMutex);
+
+			int selectedPingerIndex = ListView_GetNextItem(hwndServerList, -1, LVNI_SELECTED);
+			if (selectedPingerIndex == i) {
+				settings->UpdateSelectedItemValues(i);
+			}
+
+			// update the row with the new information
+			SendMessage(hwndServerList, LVM_UPDATE, i, 0);
+			previousRow = i;
 			if (settings->isUpdateThreadFinished) {
 				break;
 			}
@@ -37,6 +58,7 @@ ServerPingSettings::ServerPingSettings() : SettingsPane()
 {
 	// class privates
 	pingers = new List<Pinger *>();
+	InitializeCriticalSection(&pingerMutex);
 
 	// service
 	
@@ -121,6 +143,13 @@ INT_PTR ServerPingSettings::ProcMessage(UINT message, WPARAM wParam, LPARAM lPar
 			DestroyDialog();
 			return TRUE;
 		}
+		case WM_COMMAND:
+		{
+			if(LOWORD(wParam) == IDC_CLEAR) {
+				HandleClear();
+				return TRUE;
+			}
+		}
 		case WM_NOTIFY:
 		{
 			switch (((LPNMHDR) lParam)->code) {
@@ -129,24 +158,48 @@ INT_PTR ServerPingSettings::ProcMessage(UINT message, WPARAM wParam, LPARAM lPar
 					HandleLVNGetDispInfo((NMLVDISPINFO*)lParam);
 					return TRUE;
 				}
+				case LVN_ITEMCHANGED: 
+				{
+					HandleLVNItemChanged((LPNMLISTVIEW)lParam);
+					return TRUE;
+				}
 				case NM_CUSTOMDRAW:
 				{
 					SetWindowLong(hwnd, DWL_MSGRESULT, (LONG)HandleCustomDraw(lParam));
 					return TRUE;
-				}
+				}	
 			}
+			break;
 		}
-
 	}
 
 	return FALSE;
+}
+
+void ServerPingSettings::HandleClear() {
+	HWND hwndServerList = GetDlgItem(hwnd, IDC_SERVERLIST);
+	int selectedPingerIndex = ListView_GetNextItem(hwndServerList, -1, LVNI_SELECTED);
+	
+	EnterCriticalSection(&pingerMutex);
+
+	for(UINT i = 0; i < pingers->Num(); i++) {
+		pingers->GetElement(i)->Clear();
+		SendMessage(hwndServerList, LVM_UPDATE, i, 0);
+		if (selectedPingerIndex == i) {
+			UpdateSelectedItemValues(i);
+		}
+	}
+
+	LeaveCriticalSection(&pingerMutex);
+
+
 }
 
 void ServerPingSettings::HandleLVNGetDispInfo(NMLVDISPINFO *lvdi)
 {
 	Pinger *pinger = pingers->GetElement(lvdi->item.iItem);
 
-	String pszText;
+	String pszText = " ";
 
 	switch (lvdi->item.iSubItem) {
         case 0: {
@@ -158,17 +211,26 @@ void ServerPingSettings::HandleLVNGetDispInfo(NMLVDISPINFO *lvdi)
             break;
 		}
 		case 2: {
-			pszText = pinger->GetLatestPing();
+			int latestPing = pinger->GetLatestPing();
+			if (latestPing > -1) {
+				pszText = latestPing;
+			}
 			lvdi->item.pszText = AddPool(pszText);
 			break;
 		}
 		case 3: {
-			pszText = FloatString(pinger->Average());
+			double averagePing = pinger->Average();
+			if (_finite(averagePing)) {
+				pszText = FloatString(pinger->Average());
+			}
 			lvdi->item.pszText = AddPool(pszText);
 			break;
 		}
 		case 4: {
-			pszText = FloatString(pinger->StandardDeviation());
+			double standardDeviation = pinger->StandardDeviation();
+			if (_finite(standardDeviation)) {
+				pszText = FloatString(abs(standardDeviation));
+			}
 			lvdi->item.pszText = AddPool(pszText);
 			break;
 		}
@@ -177,10 +239,40 @@ void ServerPingSettings::HandleLVNGetDispInfo(NMLVDISPINFO *lvdi)
 	}
 }
 
+void ServerPingSettings::HandleLVNItemChanged(LPNMLISTVIEW pnmv)
+{
+	BOOL isSelectedNow = (pnmv->uNewState & LVIS_SELECTED);
+	BOOL wasSelectedBefore = (pnmv->uOldState  & LVIS_SELECTED);
+    if (isSelectedNow && !wasSelectedBefore) {
+		UpdateSelectedItemValues(pnmv->iItem);
+	}
+}
+
+void ServerPingSettings::UpdateSelectedItemValues(int pingerIndex)
+{
+	HWND hwndServiceAndServerGroup = GetDlgItem(hwnd, IDC_SERVER_AND_SERVICE_NAME);
+	HWND hwndLowestPingLabel = GetDlgItem(hwnd, IDC_LOWEST_PING);
+	HWND hwndHighestPingLabel = GetDlgItem(hwnd, IDC_HIGHEST_PING);
+	HWND hwndServerUrl = GetDlgItem(hwnd, IDC_SERVER_URL);
+
+	Pinger *pinger = pingers->GetElement(pingerIndex);
+	String string;
+	CTSTR ctstr;
+
+	ctstr = string = pinger->GetServiceName() + L" >> " + pinger->GetServerName();
+	SendMessage(hwndServiceAndServerGroup, WM_SETTEXT, NULL, (LPARAM)ctstr);
+	ctstr = string = pinger->GetServerUrl();
+	SendMessage(hwndServerUrl, WM_SETTEXT, NULL, (LPARAM)ctstr);
+	ctstr = string = (pinger->GetMinimumPing() == -1) ? 0 : pinger->GetMinimumPing();
+	SendMessage(hwndLowestPingLabel, WM_SETTEXT, NULL, (LPARAM)ctstr);
+	ctstr = string = (pinger->GetMaximumPing() == -1) ? 0 : pinger->GetMaximumPing();
+	SendMessage(hwndHighestPingLabel, WM_SETTEXT, NULL, (LPARAM)ctstr);
+}
+
 COLORREF ServerPingSettings::GetColor(int pingerIndex, int listViewColumn) {
 	switch (listViewColumn) {
-		case 1:
-		case 0: {
+		case 0:
+		case 1: {
 			return COLOR_BLACK;
 		}
 		case 2:  {
@@ -234,6 +326,11 @@ LRESULT ServerPingSettings::HandleCustomDraw(LPARAM lParam)
 		//Before a subitem is drawn
 		case CDDS_SUBITEM | CDDS_ITEMPREPAINT: {
 			lplvcd->clrText = GetColor(lplvcd->nmcd.dwItemSpec, lplvcd->iSubItem);
+			if (lplvcd->nmcd.dwItemSpec == currentRowBeingPinged) {
+				lplvcd->clrTextBk = RGB(240, 248, 255);
+			} else {
+				lplvcd->clrTextBk = RGB(255, 255, 255);
+			}
 			return CDRF_NEWFONT;
 		}
 	}
@@ -258,24 +355,19 @@ void ServerPingSettings::InitDialog()
 {
 	LocalizeWindow(hwnd);
 
-
-
 	HWND hwndServerList = GetDlgItem(hwnd, IDC_SERVERLIST);
 
-	for(UINT i = 0; i < pingers->Num(); i++) {
-		pingers->GetElement(i)->Clear();
-	}
+	ListView_SetExtendedListViewStyleEx(hwndServerList, LVS_EX_FULLROWSELECT, LVS_EX_FULLROWSELECT);
 
 	InitServerListColumns(hwndServerList);
 	InitServerListData(hwndServerList);
 
 	isUpdateThreadFinished = false;
-	_beginthread(pingThread, 0, NULL);
+	_beginthread(pingThread, 0, (void *)this);
 }
 
 bool ServerPingSettings::InitServerListColumns(HWND hwndServerList)
 {
-
 
 	int columnIndex = 0;
 
