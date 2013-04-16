@@ -165,7 +165,7 @@ INT_PTR ServerPingSettings::ProcMessage(UINT message, WPARAM wParam, LPARAM lPar
 				}
 				case NM_CUSTOMDRAW:
 				{
-					SetWindowLong(hwnd, DWL_MSGRESULT, (LONG)HandleCustomDraw(lParam));
+					SetWindowLong(hwnd, 0, (LONG)HandleCustomDraw(lParam));
 					return TRUE;
 				}	
 			}
