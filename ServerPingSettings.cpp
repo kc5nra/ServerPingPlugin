@@ -130,6 +130,14 @@ void ServerPingSettings::ApplySettings()
 void ServerPingSettings::CancelSettings()
 {}
 
+bool ServerPingSettings::HasDefaults() const
+{
+	return false;
+}
+
+void ServerPingSettings::SetDefaults() {
+}
+
 INT_PTR ServerPingSettings::ProcMessage(UINT message, WPARAM wParam, LPARAM lParam)
 {
 	switch(message) {
