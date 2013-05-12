@@ -42,9 +42,11 @@ private:
 
 	int nextFreePoolItem;
 
+    HANDLE hThread;
+
 public:
 	CRITICAL_SECTION pingerMutex;
-	volatile bool isUpdateThreadFinished;
+	bool isUpdateThreadFinished;
 
 public:
 	List<Pinger *> *GetPingers() { return pingers; }

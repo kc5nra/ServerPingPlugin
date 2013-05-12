@@ -16,7 +16,8 @@
 
 volatile int currentRowBeingPinged = -1;
 
-void pingThread(void *arg)
+unsigned __stdcall
+PingThread(void *arg)
 {
 
 	ServerPingSettings *settings = ServerPingPlugin::instance->GetSettings();
@@ -51,7 +52,9 @@ void pingThread(void *arg)
 		}
 	}
 
-	_endthread();
+    _endthreadex(1);
+
+    return 1;
 }
 
 ServerPingSettings::ServerPingSettings() : SettingsPane()
@@ -89,11 +92,16 @@ ServerPingSettings::ServerPingSettings() : SettingsPane()
         }
     }
 	serverData.Close();
+
+    hThread = 0;
 }
 
 ServerPingSettings::~ServerPingSettings()
 {
 	isUpdateThreadFinished = true;
+    WaitForSingleObject(hThread, INFINITE);
+    CloseHandle(hThread);
+
 	for(UINT i = 0; i < pingers->Num(); i++) {
 		delete pingers->GetElement(i);
 	}
@@ -371,7 +379,7 @@ void ServerPingSettings::InitDialog()
 	InitServerListData(hwndServerList);
 
 	isUpdateThreadFinished = false;
-	_beginthread(pingThread, 0, (void *)this);
+	hThread = (HANDLE)_beginthreadex(NULL, 0, PingThread, (void *)this, 0, NULL);
 }
 
 bool ServerPingSettings::InitServerListColumns(HWND hwndServerList)
