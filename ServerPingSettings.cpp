@@ -107,6 +107,8 @@ ServerPingSettings::~ServerPingSettings()
 	}
 
 	delete pingers;
+
+	DeleteCriticalSection(&pingerMutex);
 }
 
 CTSTR ServerPingSettings::GetCategory() const

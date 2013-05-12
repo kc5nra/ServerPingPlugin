@@ -41,12 +41,15 @@ bool AddHostInformation(struct sockaddr_in *service, String &host, int port)
         if (host == NULL || host->h_addr == NULL)
         {
             Log(TEXT("Problem accessing the DNS. (addr: %s, error: %d)"), hostname, WSAGetLastError());
-            return false;
+            Free(hostname);
+			return false;
         }
         service->sin_addr = *(struct in_addr *)host->h_addr;
     }
 
     service->sin_port = htons(port);
+
+	Free(hostname);
     return true;
 }
 
@@ -107,8 +110,8 @@ Pinger::Pinger(XElement *serviceElement, XDataItem *serverDataItem)
 
 Pinger::~Pinger()
 {
-	if (service != 0) {
-		free(service);
+	if (service) {
+		Free(service);
 	}
 	delete pings;
 }
@@ -137,7 +140,7 @@ void Pinger::Initialize() {
 	}
 
 	String ip;
-	struct sockaddr_in *clientService = (struct sockaddr_in *)malloc(sizeof(struct sockaddr_in));
+	struct sockaddr_in *clientService = (struct sockaddr_in *)Allocate(sizeof(struct sockaddr_in));
 	memset(clientService, 0, sizeof(struct sockaddr_in));
 
 
@@ -147,7 +150,7 @@ void Pinger::Initialize() {
 		service = clientService;
 	} else {
 		isValid = false;
-		free(clientService);
+		Free(clientService);
 	}
 }
 
